@@ -58,7 +58,7 @@ void *get_next_avail(int num_pages) {
 
 
 /* Function responsible for allocating pages
-and used by the benchmark
+ and used by the benchmark
 */
 void *a_malloc(unsigned int num_bytes) {
 
