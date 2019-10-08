@@ -17,9 +17,11 @@
 // MAX_MEMSIZE/PGSIZE
 #define MAXPAGEDIRSIZE 1024
 
+/*
 #define SetBit(Bitmap, k)	(Bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5)))))
 #define ClearBit(Bitmap, k)	(Bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5)))))
 #define GetBit(Bitmap, k)	(Bitmap[(k>>5)] & (1<<(k&(~((~0)<<5)))))
+*/
 
 
 // Represents a page table entry
@@ -39,14 +41,13 @@ struct tlb {
 };
 struct tlb tlb_store;
 
-char *memstart;
-int totalpage;
+char *memstart, *memend;
+unsigned int totalpage;
 int bitmapsize;
 
 unsigned int *pbitmap;
-unsigned int *vbitmap;
+//unsigned int *vbitmap;
 unsigned int pagedirectory[MAXPAGEDIRECTORYNUM];
-
 
 void set_physical_mem();
 void* translate(pde_t *pgdir, void *va);
@@ -61,5 +62,10 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer);
 
 int getpow(unsigned int num);
 unsigned int getpageoffset(void *addr);
+unsigned int get_physical_pagenumber(void *physicaladdr);
+
+void set_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5))));}
+void clear_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5))));}
+unsigned int get_bitmap(unsigned int *bitmap, int k)	{return bitmap[(k>>5)] & (1<<(k&(~((~0)<<5))));}
 
 #endif

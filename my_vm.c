@@ -11,6 +11,7 @@ void set_physical_mem() {
 		fprintf(stderr, "calloc for physical memory fails!\n");
 		exit(1);
 	}
+	memend = memstart + MAX_MEMSIZE - 1;
 	totalpage = MAX_MEMSIZE/PGSIZE;
 	int bitmapsize = totalpage/32;
 	pbitmap = (unsigned int*)calloc(bitmapsize, sizeof(unsigned int));
@@ -18,11 +19,13 @@ void set_physical_mem() {
 		fprintf(stderr, "calloc for pbitmap fails!\n");
 		exit(1);
 	}
+	/*
 	vbitmap = (unsigned int*)calloc(bitmapsize, sizeof(unsigned int));
 	if(pbitmap == NULL) {
 		fprintf(stderr, "calloc for vbitmap fails!\n");
 		exit(1);
 	}
+	*/
     //HINT: Also calculate the number of physical and virtual pages and allocate virtual and physical bitmaps and initialize them
 }
 
@@ -38,14 +41,13 @@ void* translate(pde_t *pgdir, void *va) {
 	unsigned int virtualaddress = (unsigned int)va;
 	int offset = getpow(PGSIZE);
 	unsigned int vpn = virturaladdress>>offset;
-	if(GetBit(vbitmap, vpn) == 0)	return NULL;
 
-	// pden is the index of PageDirectoryEntry
+	// pdi is the index of PageDirectoryEntry
 	unsigned int pdi = vpn>>(offset-2);
-	// pten is the index of PageTableEntry
+	// pti is the index of PageTableEntry
 	unsigned int pti = vpn & (~((~0)<<(offset-2)));
 
-	unsigned int *pagetableaddr = *(pgdir + pdi);
+	unsigned int *pagetableaddr = (unsigned int*)*(pgdir + pdi);
 	if(pagetableaddr == NULL)	return NULL;
 	if(*(pagetableaddr + pti) == NULL)	return NULL;
 
@@ -63,15 +65,31 @@ as an argument, and sets a page table entry. This function will walk the page
 directory to see if there is an existing mapping for a virtual address. If the
 virtual address is not present, then a new entry will be added
 */
-int page_map(pde_t *pgdir, void *va, void *pa)
-{
+int page_map(pde_t *pgdir, void *va, void *pa) {
     /*HINT: Similar to translate(), find the page directory (1st level)
     and page table (2nd-level) indices. If no mapping exists, set the
     virtual to physical mapping */
+	unsigned int physical_pagenumber = get_physical_pagenumber((void*)pa);
+	if(physical_pagenumber >= totalpage)	return -1;
+	if(get_bitmap(pbitmap, physical_pagenumber) != 0)	return -1;
+
+	unsigned int virtualaddress = (unsigned int)va;
+	int offset = getpow(PGSIZE);
+	unsigned int vpn = virturaladdress>>offset;
+	
+	unsigned int pdi = vpn>>(offset-2);
+	unsigned int *pagetableptr = *(pgdir + pdi);
+	if(*(pgdir + pdi) == NULL) {
+		pagetableptr = (unsigned int*)calloc(PGSIZE, 1);
+		if(pagetableptr == NULL)	return -1;
+		*(pgdir + pdi) = pagetableptr;
+	}
+
+	unsigned int pti = vpn & (~((~0)<<(offset-2)));
+	if(*(pagetableptr+pti) != 0)	return -1;
+	unsigned int pfn = 
 
 
-
-    return -1;
 }
 
 
@@ -163,4 +181,10 @@ unsigned int getpageoffset(void *addr, int offset) {
 	unsigned int address = (unsigned int)addr;
 	return address&(~((~0)<<offset));
 }
+
+unsigned int get_physical_pagenumber(void *physicaladdr) {
+	unsigned int physicaladdress = (unsigned int)physicaladdr;
+	return (physicaladdress-(unsigned int)memstart)/PGSIZE;
+}
+
 
