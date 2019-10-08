@@ -5,29 +5,55 @@ Function responsible for allocating and setting your physical memory
 */
 void set_physical_mem() {
 
-    //Allocate physical memory using mmap or malloc; this is the total size of
-    //your memory you are simulating
-
-    
-    //HINT: Also calculate the number of physical and virtual pages and allocate
-    //virtual and physical bitmaps and initialize them
-
+    //Allocate physical memory using mmap or malloc; this is the total size of your memory you are simulating
+	memstart = (char*)calloc(MAX_MEMSIZE, 1);
+	if(memstart == NULL) {
+		fprintf(stderr, "calloc for physical memory fails!\n");
+		exit(1);
+	}
+	totalpage = MAX_MEMSIZE/PGSIZE;
+	int bitmapsize = totalpage/32;
+	pbitmap = (unsigned int*)calloc(bitmapsize, sizeof(unsigned int));
+	if(pbitmap == NULL) {
+		fprintf(stderr, "calloc for pbitmap fails!\n");
+		exit(1);
+	}
+	vbitmap = (unsigned int*)calloc(bitmapsize, sizeof(unsigned int));
+	if(pbitmap == NULL) {
+		fprintf(stderr, "calloc for vbitmap fails!\n");
+		exit(1);
+	}
+    //HINT: Also calculate the number of physical and virtual pages and allocate virtual and physical bitmaps and initialize them
 }
-
-
 
 /*
 The function takes a virtual address and page directories starting address and
 performs translation to return the physical address
 */
-pte_t * translate(pde_t *pgdir, void *va) {
+void* translate(pde_t *pgdir, void *va) {
     //HINT: Get the Page directory index (1st level) Then get the
     //2nd-level-page table index using the virtual address.  Using the page
     //directory index and page table index get the physical address
+	
+	unsigned int virtualaddress = (unsigned int)va;
+	int offset = getpow(PGSIZE);
+	unsigned int vpn = virturaladdress>>offset;
+	if(GetBit(vbitmap, vpn) == 0)	return NULL;
 
+	// pden is the index of PageDirectoryEntry
+	unsigned int pdi = vpn>>(offset-2);
+	// pten is the index of PageTableEntry
+	unsigned int pti = vpn & (~((~0)<<(offset-2)));
 
+	unsigned int *pagetableaddr = *(pgdir + pdi);
+	if(pagetableaddr == NULL)	return NULL;
+	if(*(pagetableaddr + pti) == NULL)	return NULL;
+
+	unsigned int pfn = (unsigned int)*(pagetableaddr+pti);
+	unsigned int physicaladdr = (pfn<<offset) | getpageoffset((void*)virtualaddress, offset);
+	return (void*)physicaladdr;
     //If translation not successfull
-    return NULL; 
+    //return NULL; 
 }
 
 
@@ -37,13 +63,13 @@ as an argument, and sets a page table entry. This function will walk the page
 directory to see if there is an existing mapping for a virtual address. If the
 virtual address is not present, then a new entry will be added
 */
-int
-page_map(pde_t *pgdir, void *va, void *pa)
+int page_map(pde_t *pgdir, void *va, void *pa)
 {
-
     /*HINT: Similar to translate(), find the page directory (1st level)
     and page table (2nd-level) indices. If no mapping exists, set the
     virtual to physical mapping */
+
+
 
     return -1;
 }
@@ -124,5 +150,17 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
        
 }
 
+int getpow(unsigned int num) {
+	int pow = 0;
+	while(!(num&1)) {
+		++pow;
+		num >>= 1;
+	}
+	return pow;
+}
 
+unsigned int getpageoffset(void *addr, int offset) {
+	unsigned int address = (unsigned int)addr;
+	return address&(~((~0)<<offset));
+}
 

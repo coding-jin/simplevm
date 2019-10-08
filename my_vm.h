@@ -14,12 +14,19 @@
 #define MAX_MEMSIZE 4*1024*1024*1024
 
 #define MEMSIZE 1024*1024*1024
+// MAX_MEMSIZE/PGSIZE
+#define MAXPAGEDIRSIZE 1024
+
+#define SetBit(Bitmap, k)	(Bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5)))))
+#define ClearBit(Bitmap, k)	(Bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5)))))
+#define GetBit(Bitmap, k)	(Bitmap[(k>>5)] & (1<<(k&(~((~0)<<5)))))
+
 
 // Represents a page table entry
-typedef unsigned long pte_t;
+typedef unsigned int pte_t;
 
 // Represents a page directory entry
-typedef unsigned long pde_t;
+typedef unsigned int pde_t;
 
 //#define TLB_SIZE 
 
@@ -32,9 +39,17 @@ struct tlb {
 };
 struct tlb tlb_store;
 
+char *memstart;
+int totalpage;
+int bitmapsize;
+
+unsigned int *pbitmap;
+unsigned int *vbitmap;
+unsigned int pagedirectory[MAXPAGEDIRECTORYNUM];
+
 
 void set_physical_mem();
-pte_t* translate(pde_t *pgdir, void *va);
+void* translate(pde_t *pgdir, void *va);
 int page_map(pde_t *pgdir, void *va, void* pa);
 bool check_in_tlb(void *va);
 void put_in_tlb(void *va, void *pa);
@@ -43,5 +58,8 @@ void a_free(void *va, int size);
 void put_value(void *va, void *val, int size);
 void get_value(void *va, void *val, int size);
 void mat_mult(void *mat1, void *mat2, int size, void *answer);
+
+int getpow(unsigned int num);
+unsigned int getpageoffset(void *addr);
 
 #endif
