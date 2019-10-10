@@ -85,7 +85,6 @@ int page_map(void *va, void *pa) {
 	if(pagetableptr == NULL) {
 		pagetableptr = (unsigned int*)calloc(PGSIZE, 1);
 		if(pagetableptr == NULL)	return -1;
-		//*(pgdir + pdi) = pagetableptr;
 		*(pagedir + pdi) = pagetableptr;
 	}
 	// get the pagetable index pti
@@ -155,6 +154,13 @@ void a_free(void *va, int size) {
     //Free the page table entries starting from this virtual address (va)
     // Also mark the pages free in the bitmap
     //Only free if the memory from "va" to va+size is valid
+	
+	if(size <= 0)	return;
+	unsigned int remaining = size & ~((~0)<<offset);
+	unsigned int pagenum = size>>offset;
+	if(remaining > 0)	++pagenum;
+	valid_free((address_type)va,pagenum);
+
 }
 
 
@@ -168,8 +174,25 @@ void put_value(void *va, void *val, int size) {
        than one page. Therefore, you may have to find multiple pages using translate()
        function.*/
 
-}
+	if(size<=0 || val==NULL)	return;
+	unsigned int pagenum = size>>offset;
+	if(size & ~((~0)<<offset))	++pagenum;
+	address_type pa = (address_type)translate(va);
+	pn_type vpn_start = ((address_type)va)>>offset;
+	pn_type vpn_end = ((address_type)va + size-1)>>offset;
+	if(vpn_start==vpn_end) {
+		// easy case: the val is within one page
+		memcpy((void*)pa, val, size);
+	}else {
+		// the val exceeds one page
+		unsigned int remaining = (1<<offset)-getpageoffset(va);
+		memcpy((void*)pa, val, remaining);
+		void *buf = val+remaining;
+		unsigned int size_tocp = size-remaining;
+		put_value((void*)((vpn_start+1)<<offset), buf, size_tocp);
+	}
 
+}
 
 /*Given a virtual address, this function copies the contents of the page to val*/
 void get_value(void *va, void *val, int size) {
@@ -178,8 +201,23 @@ void get_value(void *va, void *val, int size) {
     "val" address. Assume you can access "val" directly by derefencing them.
     If you are implementing TLB,  always check first the presence of translation
     in TLB before proceeding forward */
-
-
+	if(size<=0 || val==NULL)	return;
+	unsigned int pagenum = size>>offset;
+	if(size & ~((~0)<<offset))	++pagenum;
+	address_type pa = (address_type)translate(va);
+	pn_type vpn_start = ((address_type)va)>>offset;
+	pn_type vpn_end = ((address_type)va + size-1)>>offset;
+	if(vpn_start==vpn_end) {
+		// easy case: the val is within one page
+		memcpy(val, (void*)pa, size);
+	}else {
+		// va+size-1 exceeds the page
+		unsigned int remaining = (1<<offset) - getpageoffset(va);
+		memcpy(val, (void*)pa, remaining);
+		void *buf = val+remaining;
+		unsigned int size_tocp = size - remaining;
+		get_value((void*)((vpn_start+1)<<offset), buf, size_tocp);
+	}
 }
 
 
@@ -280,7 +318,71 @@ unsigned int get_ppn(unsigned int pfn) {
 	return ((pfn<<offset)-(unsigned int)memstart)/PGSIZE;
 }
 
+bool valid_free(address_type va, unsigned int pagenum) {
+	pn_type vpn = va>>offset;
+	// check whether vpn, vpn+1, vpn+pagenum-1 are all allocated
+	for(unsigned int i=0;i<pagenum;++i)	if(get_bitmap(vbitmap,vpn+i)==0)	return false;
+	
+	unsigned int pdi, pti;
+	pn_type vpn_i, pfn, ppn;
+	pagetableptr_type pagetableptr;
+	for(pn_type vpn_i=vpn;vpn_i<vpn+pagenum;++vpn_i) {
+		pdi = vpn_i >> (offset-2);
+		pti = vpn_i & ~((~0)<<(offset-2));
+		pagetableptr = pagedir[pdi];
+		if(pagetableptr==NULL)	exit(1);
+		pfn = pagetableptr[pti];
+		if(pfn==0)	exit(1);
+		ppn = get_ppn(pfn);
+		pagetableptr[pti] = 0;
+		clear_bitmap(pbitmap, ppn);
+		clear_bitmap(vbitmap, vpn_i);
+	}
+
+	unsigned int pdi_start = vpn >> (offset-2);
+	unsigned int pdi_end = (vpn+pagenum-1) >> (offset-2);
+	for(unsigned int i=pdi_start+1;i<pdi_end;++i) {
+		free(pagedir[i]);
+		pagedir[i] = NULL;
+	}
+
+	// free the first related entry in the pagedir if necessary
+	bool free_flag = true;
+	pagetableptr = pagedir[pdi_start];
+	unsigned int sizeofpagetable = PGSIZE/sizeof(pn_type);
+	for(unsigned int i=0;i<sizeofpagetable;++i) {
+		if(pagetableptr[i]) {
+			free_flag = false;
+			break;
+		}
+	}
+	if(free_flag) {
+		free(pagedir[pdi_start]);
+		pagedir[pdi_start] = NULL;
+	}
+
+	// free the last related entry in the pagedir if necessary
+	if(pdi_end != pdi_start) {
+		free_flag = true;
+		pagetableptr = pagedir[pdi_end];
+		for(unsigned int i=0;i<sizeofpagetable;++i) {
+			if(pagetableptr[i]) {
+				free_flag = false;
+				break;
+			}
+		}
+		if(free_flag) {
+			free(pagedir[pdi_end]);
+			pagedir[pdi_end] = NULL;
+		}
+	}
+
+}
+
 void set_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5))));}
 void clear_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5))));}
 unsigned int get_bitmap(unsigned int *bitmap, int k)	{return bitmap[(k>>5)] & (1<<(k&(~((~0)<<5))));}
+
+
+
 

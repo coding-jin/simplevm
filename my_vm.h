@@ -25,12 +25,20 @@
 #define GetBit(Bitmap, k)	(Bitmap[(k>>5)] & (1<<(k&(~((~0)<<5)))))
 */
 
+// represents address type
+typedef unsigned int address_type;
+
+// represents pagenumber(pn) type
+//typedef unsigned long long pn_type;
+typedef unsigned int pn_type;
 
 // Represents a page table entry
 typedef unsigned int pte_t;
+typedef unsigned int *pagetableptr_type;
 
 // Represents a page directory entry
 typedef unsigned int *pde_t;
+typedef unsigned int **pagedirptr_type;
 
 //#define TLB_SIZE 
 
@@ -47,7 +55,7 @@ struct tlb tlb_store;
 char *memstart, *memend;
 //unsigned int init_pagedir;
 //unsigned int **pagedir;
-pde_t *pagedir;
+pagedirptr_type pagedir;
 unsigned int offset;
 unsigned int totalpage;
 int bitmapsize;
@@ -77,6 +85,7 @@ unsigned int get_pfn(void *pa);
 unsigned int get_physical_pagenumber(void *pa);
 unsigned int get_next_avail_pfn();
 unsigned int get_ppn(unsigned int pfn);
+bool valid_free(address_type va, unsigned int pagenum);
 
 void set_bitmap(unsigned int *bitmap, int k);//	{bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5))));}
 void clear_bitmap(unsigned int *bitmap, int k);//	{bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5))));}
