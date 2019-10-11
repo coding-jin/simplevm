@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "../my_vm.h"
 
-#define SIZE 5
+#define SIZE 10
 
 int main() {
 
@@ -38,8 +38,7 @@ int main() {
             address_b = (unsigned int)b + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
             get_value((void *)address_a, &y, sizeof(int));
             get_value( (void *)address_b, &z, sizeof(int));
-            printf("y%d %d\n", j, y);
-            printf("z%d %d\n", j, z);
+            printf("%d ", y);
         }
         printf("\n");
     } 

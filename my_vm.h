@@ -52,7 +52,8 @@ struct tlb {
 struct tlb tlb_store;
 
 //unsigned int init_mem;
-char *memstart, *memend;
+//char *memstart, *memend;
+void *memstart, *memend;
 //unsigned int init_pagedir;
 //unsigned int **pagedir;
 pagedirptr_type pagedir;

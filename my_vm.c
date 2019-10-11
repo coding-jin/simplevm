@@ -9,11 +9,13 @@ Function responsible for allocating and setting your physical memory
 void set_physical_mem() {
 
     //Allocate physical memory using mmap or malloc; this is the total size of your memory you are simulating
-	memstart = (char*)calloc(MAX_MEMSIZE, 1);
+	//memstart = (char*)calloc(MAX_MEMSIZE, 1);
+	memstart = memalign(PGSIZE, MAX_MEMSIZE);
 	if(memstart == NULL) {
 		fprintf(stderr, "calloc for physical memory fails!\n");
 		exit(1);
 	}
+	memset(memstart, 0, MAX_MEMSIZE);
 	memend = memstart + MAX_MEMSIZE - 1;
 	totalpage = MAX_MEMSIZE/PGSIZE;
 	offset = getpow(PGSIZE);
@@ -24,7 +26,7 @@ void set_physical_mem() {
 		exit(1);
 	}
 	vbitmap = (unsigned int*)calloc(bitmapsize, sizeof(unsigned int));
-	if(pbitmap == NULL) {
+	if(vbitmap == NULL) {
 		fprintf(stderr, "calloc for vbitmap fails!\n");
 		exit(1);
 	}
@@ -50,11 +52,12 @@ void* translate(/*pde_t *pgdir, */void *va) {
 	unsigned int pti = vpn & (~((~0)<<(offset-2)));
 
 	//unsigned int *pagetableptr = (unsigned int*)*(pgdir + pdi);
-	unsigned int *pagetableptr = (unsigned int*)*(pagedir + pdi);
+	//unsigned int *pagetableptr = (unsigned int*)*(pagedir + pdi);
+	unsigned int *pagetableptr = pagedir[pdi];
 	if(pagetableptr == NULL)	return NULL;
-	if(*(pagetableptr + pti) == 0)	return NULL;
+	if(pagetableptr[pti] == 0)	return NULL;
 
-	unsigned int pfn = (unsigned int)*(pagetableptr+pti);
+	unsigned int pfn = pagetableptr[pti];
 	unsigned int physicaladdr = (pfn<<offset) | getpageoffset((void*)virturaladdress);
 	return (void*)physicaladdr;
     //If translation not successfull
@@ -111,7 +114,8 @@ bool page_map(unsigned int vpn) {
 	if(pagedir_entry[pti]!=0)	return false;
 	pagedir_entry[pti] = pfn; // *(pagedir+pti) = pfn;
 	set_bitmap(vbitmap,vpn);
-	set_bitmap(pbitmap,get_ppn(pfn));
+	unsigned int ppn = get_ppn(pfn);
+	set_bitmap(pbitmap, ppn);
 	return true;
 }
 
@@ -234,8 +238,26 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
     load each element and perform multiplication. Take a look at test.c! In addition to 
     getting the values from two matrices, you will perform multiplication and 
     store the result to the "answer array"*/
+	int *arr1 = (int*)calloc(size*size, sizeof(int));
+	int *arr2 = (int*)calloc(size*size, sizeof(int));
+	int *arr3 = (int*)calloc(size*size, sizeof(int));
+	if(arr1==NULL || arr2==NULL || arr3==NULL)	return;
+	get_value(mat1, arr1, size*size*sizeof(int));
+	get_value(mat2, arr2, size*size*sizeof(int));
+	int ij;
+	for(int i=0;i<size;++i) {
+		for(int j=0;j<size;++j) {
+			ij = i*size + j;
+			for(int k=0;k<size;++k) {
+				arr3[ij] += arr1[i*size+k]*arr2[k*size+j];
+			}
+		}
+	}
+	put_value(answer, arr3, size*size*sizeof(int));
+	free(arr1);
+	free(arr2);
+	free(arr3);
 
-       
 }
 
 int getpow(unsigned int num) {
@@ -309,13 +331,15 @@ void* get_va(int num_pages) {
 
 unsigned int get_next_avail_pfn() {
 	for(int i=0;i<totalpage;++i) {
-		if(get_bitmap(pbitmap,i)==0)	return ((unsigned int)memstart + i*PGSIZE)>>offset;
+		if(get_bitmap(pbitmap,i)==0) {
+			return ((unsigned int)memstart + i*PGSIZE)>>offset;
+		}
 	}
 	return 0;
 }
 
 unsigned int get_ppn(unsigned int pfn) {
-	return ((pfn<<offset)-(unsigned int)memstart)/PGSIZE;
+	return ((pfn<<offset)-(unsigned int)memstart)>>offset;
 }
 
 bool valid_free(address_type va, unsigned int pagenum) {
@@ -379,10 +403,16 @@ bool valid_free(address_type va, unsigned int pagenum) {
 
 }
 
-void set_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5))));}
-void clear_bitmap(unsigned int *bitmap, int k)	{bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5))));}
-unsigned int get_bitmap(unsigned int *bitmap, int k)	{return bitmap[(k>>5)] & (1<<(k&(~((~0)<<5))));}
+void set_bitmap(unsigned int *bitmap, int k) {
+	bitmap[(k>>5)] |= (1<<(k&(~((~0)<<5))));
+}
 
+void clear_bitmap(unsigned int *bitmap, int k) {
+	bitmap[(k>>5)] &= ~(1<<(k&(~((~0)<<5))));
+}
 
+unsigned int get_bitmap(unsigned int *bitmap, int k) {
+	return bitmap[(k>>5)] & (1<<(k&(~((~0)<<5))));
+}
 
 
