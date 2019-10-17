@@ -2,6 +2,9 @@
 #define MY_VM_H_INCLUDED
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdio.h>
+#include <inttypes.h>
+
 
 //Assume the address space is 32 bits, so the max memory size is 4GB
 //Page size is 4KB
@@ -11,15 +14,17 @@
 #define PGSIZE 4096
 
 // Maximum size of your memory
-#define MAX_MEMSIZE 4*1024*1024*1024
+#define MAX_MEMSIZE 2*1024*1024*1024
 
 #define MEMSIZE 1024*1024*1024
 
 // Represents a page table entry
-typedef unsigned long pte_t;
+//typedef unsigned long pte_t;
+typedef uint32_t pte_t;
 
 // Represents a page directory entry
-typedef unsigned long pde_t;
+//typedef unsigned long pde_t;
+typedef uint32_t pde_t;
 
 //#define TLB_SIZE 
 
@@ -32,6 +37,16 @@ struct tlb {
 };
 struct tlb tlb_store;
 
+bool init_physical;
+void *memstart;
+uint32_t *pbitmap;
+uint32_t *vbitmap;
+uint32_t pagenum;
+uint32_t bitmapsize;
+
+void set_bitmap(uint32_t *bitmap, uint32_t k);
+void clear_bitmap(uint32_t *bitmap, uint32_t k);
+bool get_bitmap(uint32_t *bitmap, uint32_t k);
 
 void set_physical_mem();
 pte_t* translate(pde_t *pgdir, void *va);

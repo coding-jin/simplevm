@@ -1,5 +1,6 @@
 #include "my_vm.h"
 
+
 /*
 Function responsible for allocating and setting your physical memory 
 */
@@ -7,10 +8,27 @@ void set_physical_mem() {
 
     //Allocate physical memory using mmap or malloc; this is the total size of
     //your memory you are simulating
+	memstart = calloc(MAX_MEMSIZE, 1);
+	if(memstart == NULL) {
+		fprintf(stderr, "calloc for memstart fails!\n");
+		exit(1);
+	}
 
-    
+	pagenum = MAX_MEMSIZE/PGSIZE;
+	bitmapsize = pagenum/8;
     //HINT: Also calculate the number of physical and virtual pages and allocate
     //virtual and physical bitmaps and initialize them
+	pbitmap = (uint32_t*)calloc(bitmapsize, 1);
+	if(pbitmap == NULL) {
+		fprintf(stderr, "calloc for pbitmap fails!\n");
+		exit(1);
+	}
+	vbitmap = (uint32_t*)calloc(bitmapsize, 1);
+	if(vbitmap == NULL) {
+		fprintf(stderr, "calloc for vbitmap fails!\n");
+		exit(1);
+	}
+
 
 }
 
@@ -122,6 +140,19 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
     store the result to the "answer array"*/
 
        
+}
+
+void  set_bitmap(uint32_t *bitmap, uint32_t k) {
+	bitmap[k>>5] |= (1<<(k&(~((~0)<<5))));
+}
+
+void clear_bitmap(uint32_t *bitmap, uint32_t k) {
+	bitmap[k>>5] &= ~(1<<(k&(~((~0)<<5))));
+}
+
+bool get_bitmap(uint32_t *bitmap, uint32_t k) {
+	if((bitmap[k>>5]>>(k&~((~0)<<5))) & 1)	return true;
+	else	return false;
 }
 
 
