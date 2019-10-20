@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include "../my_vm.h"
 
-#define SIZE 5
+#define SIZE 10
 
 int main() {
 
@@ -12,7 +12,7 @@ int main() {
     int old_a = (int)a;
     void *b = a_malloc(100*4);
     void *c = a_malloc(100*4);
-    int x = 1;
+    int x0=1, x1=2;
     int y, z;
     int i =0, j=0;
     int address_a = 0, address_b = 0;
@@ -25,8 +25,8 @@ int main() {
         for (j = 0; j < SIZE; j++) {
             address_a = (unsigned int)a + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
             address_b = (unsigned int)b + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
-            put_value((void *)address_a, &x, sizeof(int));
-            put_value((void *)address_b, &x, sizeof(int));
+            put_value((void *)address_a, &x0, sizeof(int));
+            put_value((void *)address_b, &x1, sizeof(int));
         }
     } 
 
@@ -38,11 +38,12 @@ int main() {
             address_b = (unsigned int)b + ((i * SIZE * sizeof(int))) + (j * sizeof(int));
             get_value((void *)address_a, &y, sizeof(int));
             get_value( (void *)address_b, &z, sizeof(int));
-            printf("%d ", y);
+            printf("y=%d ", y);
+			printf("z=%d ", z);
         }
         printf("\n");
     } 
-
+	/*
     printf("Performing matrix multiplication with itself!\n");
     mat_mult(a, b, SIZE, c);
 
@@ -55,6 +56,7 @@ int main() {
         }
         printf("\n");
     }
+	*/
     printf("Freeing the allocations!\n");
     a_free(a, 100*4);
     a_free(b, 100*4);
