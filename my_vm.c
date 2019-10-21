@@ -110,7 +110,6 @@ void *get_next_avail(uint32_t num_pages) {
 			if(counter==num_pages)	break;
 		}
 	}
-
 	if(counter!=num_pages)	return NULL;
 	// i corresponds to the 1st virtual page, and j to the last
 	pageno_t vpn, ppn=0, pfn;
@@ -171,9 +170,9 @@ void a_free(void *va, int size) {
 		uint32_t pdindex, ptindex;
 		pte_t *pagetable;
 		pageno_t pfn, ppn;
-		for(pageno_t i=vpn;i<vpn+num_pages;++i) {
-			pdindex = i>>FIRSTLEVELBITS;
-			ptindex = i & ~((~0)<<FIRSTLEVELBITS);
+		for(pageno_t vpn_i=vpn;vpn_i<vpn+num_pages;++vpn_i) {
+			pdindex = vpn_i>>FIRSTLEVELBITS;
+			ptindex = vpn_i & ~((~0)<<FIRSTLEVELBITS);
 			pagetable = _pagedir[pdindex];
 			pfn = pagetable[ptindex];
 			ppn = transfer_pfntoppn(pfn);
@@ -188,11 +187,18 @@ void a_free(void *va, int size) {
 				}
 			}
 			if(pagetable_free) {
+				printf("free pagetable!\n");
 				free(_pagedir[pdindex]);
 				_pagedir[pdindex] = NULL;
 			}
 			clear_bitmap(pbitmap, ppn);
-			clear_bitmap(vbitmap, vpn);
+			clear_bitmap(vbitmap, vpn_i);
+			/*
+			if(get_bitmap(pbitmap, ppn))	printf("ppn=%d clear failed!\n", ppn);
+			else	printf("ppn=%d clear succeed!\n", ppn);
+			if(get_bitmap(vbitmap, vpn_i))	printf("vpn_i=%d clear failed!\n", vpn_i);
+			else	printf("vpn_i=%d clear succeed!\n", vpn_i);
+			*/
 		}
 	}
 
@@ -281,14 +287,30 @@ argument representing the number of rows and columns. After performing matrix
 multiplication, copy the result to answer.
 */
 void mat_mult(void *mat1, void *mat2, int size, void *answer) {
-
     /* Hint: You will index as [i * size + j] where  "i, j" are the indices of the
     matrix accessed. Similar to the code in test.c, you will use get_value() to
     load each element and perform multiplication. Take a look at test.c! In addition to 
     getting the values from two matrices, you will perform multiplication and 
     store the result to the "answer array"*/
+	address_t address_m1, address_m2, address_ans;
+	int tmp, tmp1, tmp2;
+	for(int i=0;i<size;++i)
+		for(int j=0;j<size;++j) {
+			tmp = 0;
+			for(int k=0;k<size;++k) {
+				address_m1 = (address_t)mat1 + (i*size+k)*sizeof(int);
+				address_m2 = (address_t)mat2 + (k*size+j)*sizeof(int);
+				get_value((void*)address_m1, &tmp1, sizeof(int));
+				get_value((void*)address_m2, &tmp2, sizeof(int));
+				if(tmp2 != 2) {
+					printf("i=%d j=%d k=%d tmp1=%d tmp2=%d\n", i, j, k, tmp1, tmp2);
+				}
+				tmp += tmp1*tmp2;
+			}
+			address_ans = (address_t)answer + (i*size+j)*sizeof(int);
+			put_value((void*)address_ans, &tmp, sizeof(int));
+		}
 
-       
 }
 
 void set_bitmap(uint32_t *bitmap, uint32_t k) {
