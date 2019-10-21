@@ -11,17 +11,18 @@ void set_physical_mem() {
     //Allocate physical memory using mmap or malloc; this is the total size of
     //your memory you are simulating
 	//memstart = calloc(MAX_MEMSIZE, 1);
-	/*
 	memstart = memalign(PGSIZE, MAX_MEMSIZE);
 	if(memstart == NULL) {
 		fprintf(stderr, "calloc for memstart fails!\n");
 		exit(1);
-	}*/
+	}
+	/*
 	if(posix_memalign(&memstart, PGSIZE, MAX_MEMSIZE) != 0) {
 		fprintf(stderr, "posix_memalign error!\n");
 		exit(1);
 	}
-
+	*/
+	memset(memstart, NULL, MAX_MEMSIZE);
 	_pagenum = MAX_MEMSIZE/PGSIZE;
 	bitmapsize = _pagenum/8;
     //HINT: Also calculate the number of physical and virtual pages and allocate
@@ -176,6 +177,7 @@ void a_free(void *va, int size) {
 			pagetable = _pagedir[pdindex];
 			pfn = pagetable[ptindex];
 			ppn = transfer_pfntoppn(pfn);
+			//printf("ppn=%d pfn=%d \n", ppn, pfn);
 
 			// free
 			pagetable[ptindex] = 0;
@@ -187,7 +189,6 @@ void a_free(void *va, int size) {
 				}
 			}
 			if(pagetable_free) {
-				printf("free pagetable!\n");
 				free(_pagedir[pdindex]);
 				_pagedir[pdindex] = NULL;
 			}
@@ -302,11 +303,14 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
 				address_m2 = (address_t)mat2 + (k*size+j)*sizeof(int);
 				get_value((void*)address_m1, &tmp1, sizeof(int));
 				get_value((void*)address_m2, &tmp2, sizeof(int));
+				/*
 				if(tmp2 != 2) {
 					printf("i=%d j=%d k=%d tmp1=%d tmp2=%d\n", i, j, k, tmp1, tmp2);
 				}
+				*/
 				tmp += tmp1*tmp2;
 			}
+			//printf("tmp=%d\n", tmp);
 			address_ans = (address_t)answer + (i*size+j)*sizeof(int);
 			put_value((void*)address_ans, &tmp, sizeof(int));
 		}
@@ -327,7 +331,7 @@ bool get_bitmap(uint32_t *bitmap, uint32_t k) {
 }
 
 uint32_t get_pageoffset(address_t va) {
-	return va & ~((~0)<<PGSIZE);
+	return va & ~((~0)<<get_pow2(PGSIZE));
 }
 
 uint32_t get_ptindex(address_t va) {
@@ -348,7 +352,6 @@ uint32_t get_pow2(uint32_t number) {
 	return counter;
 }
 
-pageno_t get_next_avail_pfn() {}
 
 pageno_t transfer_ppntopfn(pageno_t ppn) {
 	return (((address_t)memstart)>>get_pow2(PGSIZE)) + ppn;
