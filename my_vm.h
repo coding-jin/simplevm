@@ -10,6 +10,7 @@
 //Add any important includes here which you may need
 
 #define PGSIZE 4096
+#define TLBSIZE 32
 
 // Maximum size of your memory
 //#define MAX_MEMSIZE (uint64_t)1024*(uint64_t)1024*(uint64_t)1024
@@ -40,13 +41,16 @@ typedef uint64_t pageno_t;
 //#define TLB_SIZE 
 
 //Structure to represents TLB
-struct tlb {
-
-    //Assume your TLB is a direct mapped TLB of TBL_SIZE (entries)
-    // You must also define wth TBL_SIZE in this file.
+typedef struct tlb{
+    //Assume your TLB is a direct mapped TLB of TBL_SIZE (entries). You must also define wth TBL_SIZE in this file.
     //Assume each bucket to be 4 bytes
-};
-struct tlb tlb_store;
+	bool valid;
+	pageno_t key;
+	pageno_t value;
+	uint64_t timecounter;
+}tlb;
+tlb _tlb_store[TLBSIZE];
+uint64_t _timecounter;
 
 char *memstart;
 //pde_t *_pagedir;
@@ -75,12 +79,14 @@ void set_physical_mem();
 address_t translate(address_t va);
 void* get_next_avail(uint64_t num_pages);
 bool page_map(pageno_t vpn, pageno_t pfn);
-bool check_in_tlb(void *va);
-void put_in_tlb(void *va, void *pa);
+void tlb_add(pageno_t vpn, pageno_t pfn);
 void *a_malloc(uint64_t num_bytes);
 void a_free(void *va, uint64_t size);
 void put_value(void *va, void *val, int size);
 void get_value(void *va, void *val, int size);
 void mat_mult(void *mat1, void *mat2, int size, void *answer);
+
+uint64_t tlb_lookup(pageno_t vpn);
+void tlb_freeupdate(pageno_t vpn);
 
 #endif
