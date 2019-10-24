@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <inttypes.h>
-//Assume the address space is 32 bits, so the max memory size is 4GB
+//Assume the address space is 48 bits, so the max memory size is 256*1024GB
 //Page size is 4KB
 
 //Add any important includes here which you may need
@@ -12,24 +12,30 @@
 #define PGSIZE 4096
 
 // Maximum size of your memory
-#define MAX_MEMSIZE 2*1024*1024*1024
+//#define MAX_MEMSIZE (uint64_t)1024*(uint64_t)1024*(uint64_t)1024
+//1024*1024*1024=1073741824    1024*1024*1024*1024=1099511627776
+#define MAX_MEMSIZE 8589934592
 
-#define MEMSIZE 1024*1024*1024
+#define LEVELBITS 9
 
-#define FIRSTLEVELBITS 10
+typedef uint64_t address_t;
 
-typedef uint32_t address_t;
+// address format: pgd(9) pud(9) pmd(9) pte(9) offset(12)
 
+typedef uint64_t pgd_t;
+typedef uint64_t pud_t;
+typedef uint64_t pmd_t;
+typedef uint64_t pte_t;
 
 // Represents a page table entry
 //typedef unsigned long pte_t;
-typedef uint32_t pte_t;
+//typedef uint64_t pte_t;
 
 // Represents a page directory entry
 //typedef unsigned long pde_t;
-typedef uint32_t pde_t;
+//typedef uint64_t pde_t;
 
-typedef uint32_t pageno_t;
+typedef uint64_t pageno_t;
 
 //#define TLB_SIZE 
 
@@ -42,33 +48,37 @@ struct tlb {
 };
 struct tlb tlb_store;
 
-//bool _init_physical;
 char *memstart;
 //pde_t *_pagedir;
 uint32_t *pbitmap;
 uint32_t *vbitmap;
-//uint32_t _pagenum;
-uint32_t bitmapsize;
+uint64_t _pagenum;
+uint32_t _offsetbits;
+uint32_t _tablesize;
 
-void set_bitmap(uint32_t *bitmap, uint32_t k);
-void clear_bitmap(uint32_t *bitmap, uint32_t k);
-bool get_bitmap(uint32_t *bitmap, uint32_t k);
+void set_bitmap(uint32_t *bitmap, uint64_t k);
+void clear_bitmap(uint32_t *bitmap, uint64_t k);
+bool get_bitmap(uint32_t *bitmap, uint64_t k);
 
-uint32_t get_pdindex(address_t va);
-uint32_t get_ptindex(address_t va);
+uint32_t get_pgdindex(address_t va);
+uint32_t get_pudindex(address_t va);
+uint32_t get_pmdindex(address_t va);
+uint32_t get_pteindex(address_t va);
+
 uint32_t get_pageoffset(address_t va);
-uint32_t get_pow2(uint32_t number);
+uint32_t get_pow2(uint64_t number);
 pageno_t get_next_avail_pfn();
 pageno_t transfer_ppntopfn(pageno_t ppn);
 pageno_t transfer_pfntoppn(pageno_t pfn);
 
 void set_physical_mem();
-pte_t translate(pde_t *pgdir, address_t va);
-bool page_map(pde_t *pgdir, pageno_t vpn, pageno_t pfn);
+address_t translate(address_t va);
+void* get_next_avail(uint64_t num_pages);
+bool page_map(pageno_t vpn, pageno_t pfn);
 bool check_in_tlb(void *va);
 void put_in_tlb(void *va, void *pa);
-void *a_malloc(unsigned int num_bytes);
-void a_free(void *va, int size);
+void *a_malloc(uint64_t num_bytes);
+void a_free(void *va, uint64_t size);
 void put_value(void *va, void *val, int size);
 void get_value(void *va, void *val, int size);
 void mat_mult(void *mat1, void *mat2, int size, void *answer);
