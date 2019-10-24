@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <string.h>
+#include <pthread.h>
+#include <unistd.h>
 //Assume the address space is 48 bits, so the max memory size is 256*1024GB
 //Page size is 4KB
 
@@ -18,6 +21,8 @@
 #define MAX_MEMSIZE 8589934592
 
 #define LEVELBITS 9
+
+pthread_mutex_t _lock;
 
 typedef uint64_t address_t;
 

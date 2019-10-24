@@ -19,7 +19,7 @@ void *put_mem(void *id_arg) {
     void *va_pointer = pointers[*((int *)id_arg)];
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (unsigned int)va_pointer + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            int address_a = (uint64_t)va_pointer + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             put_val((void *)address_a, &val, sizeof(int));
         }
     } 
@@ -63,7 +63,7 @@ int main() {
     int val = 0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (unsigned int)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            int address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             get_val((void *)address_a, &val, sizeof(int));
             printf("%d ", val);
         }
@@ -80,13 +80,13 @@ int main() {
     val = 0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (unsigned int)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            int address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             get_val((void *)address_a, &val, sizeof(int));
             printf("%d ", val);
         }
         printf("\n");
     }
-    int old = (int)pointers[0];
+    uint64_t old = (uint64_t)pointers[0];
     printf("Gonna free everything in multiple threads!\n");
     // ufree(pointers[0], alloc_size);
     for (int i = 0; i < num_threads; i++)
@@ -97,7 +97,7 @@ int main() {
     int flag = 0;
     while (temp != NULL) {
         temp = umalloc(10);
-        if ((int)temp == old) {
+        if ((uint64_t)temp == old) {
             printf("Free Worked!\n");
             flag = 1;
             break;
