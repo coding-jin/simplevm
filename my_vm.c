@@ -1,5 +1,6 @@
 #include "my_vm.h"
 
+pthread_mutex_t _init_mutex = PTHREAD_MUTEX_INITIALIZER;
 bool _init_physical = false;
 pgd_t *_pgd = NULL;
 
@@ -33,6 +34,18 @@ void set_physical_mem() {
 	}
 
 	for(int i=0;i<TLBSIZE;++i)	_tlb_store[i].valid = false;
+
+	if(0 != pthread_rwlock_init(&_pagetable_lock, NULL)) {
+		fprintf(stderr, "init pagetable lock fails!\n");
+		exit(1);
+	}
+	for(int i=0;i<TLBSIZE;++i) {
+		if(0 != pthread_rwlock_init(&_tlb_lock[i], NULL)) {
+			fprintf(stderr, "init tlblock[%d] fails!\n", i);
+			exit(1);
+		}
+	}
+
 	_init_physical = true;
 }
 
@@ -75,6 +88,52 @@ address_t translate(address_t va) {
 	}
 	pageno_t pfn = ptetable[pteindex];
 	tlb_add(vpn, pfn);
+	return (pfn<<_offsetbits) | get_pageoffset(va);
+}
+
+address_t p_translate(address_t va) {
+	if(_pgd == NULL) {
+		fprintf(stderr, "Error! function[%s] line[%d]\n", __func__, __LINE__);
+		return 0;
+	}
+
+	pageno_t vpn = va>>_offsetbits;
+	uint32_t tlbindex = vpn & _tlbmodbits;
+	hold_rlock(&_tlb_lock[tlbindex]);
+	pageno_t tlb_pfn = tlb_lookup(vpn);
+	release_lock(&_tlb_lock[tlbindex]);
+	if(tlb_pfn != 0)	return (tlb_pfn<<_offsetbits) | get_pageoffset(va);
+
+	uint32_t pgdindex = get_pgdindex(va);
+	if(_pgd[pgdindex] == 0)	{
+		fprintf(stderr, "Error! function[%s] line[%d]\n", __func__, __LINE__);
+		return 0;
+	}
+
+	pud_t *pudtable = _pgd[pgdindex];
+	uint32_t pudindex = get_pudindex(va);
+	if(pudtable[pudindex] == 0)	{
+		fprintf(stderr, "Error! function[%s] line[%d]\n", __func__, __LINE__);
+		return 0;
+	}
+
+	pmd_t *pmdtable = pudtable[pudindex];
+	uint32_t pmdindex = get_pmdindex(va);
+	if(pmdtable[pmdindex] == 0)	{
+		fprintf(stderr, "Error! function[%s] line[%d]\n", __func__, __LINE__);
+		return 0;
+	}
+
+	pte_t *ptetable = pmdtable[pmdindex];
+	uint32_t pteindex = get_pteindex(va);
+	if(ptetable[pteindex] == 0)	{
+		fprintf(stderr, "Error! function[%s] line[%d]\n", __func__, __LINE__);
+		return 0;
+	}
+	pageno_t pfn = ptetable[pteindex];
+	hold_wlock(&_tlb_lock[tlbindex]);
+	tlb_add(vpn, pfn);
+	release_lock(&_tlb_lock[tlbindex]);
 	return (pfn<<_offsetbits) | get_pageoffset(va);
 }
 
@@ -159,6 +218,26 @@ void *a_malloc(uint64_t num_bytes) {
 	return malloc_address;
 }
 
+void *umalloc(uint64_t num_bytes) {
+
+	if(num_bytes==0 || num_bytes>MAX_MEMSIZE)	return NULL;
+	uint64_t num_pages = num_bytes>>_offsetbits;
+	if(num_bytes&~((~0)<<_offsetbits))	++num_pages;
+
+	if(0 != pthread_mutex_lock(&_init_mutex)) {
+		fprintf(stderr, "pthread_mutex_lock(&_init_mutex) fails!\n");
+		exit(1);
+	}
+	if(_init_physical == false)	set_physical_mem();
+	pthread_mutex_unlock(&_init_mutex);
+
+	hold_wlock(&_pagetable_lock);
+	void *malloc_address = get_next_avail(num_pages);
+	release_lock(&_pagetable_lock);
+	return malloc_address;
+
+}
+
 /* Responsible for releasing one or more memory pages using virtual address (va) */
 void a_free(void *va, uint64_t size) {
     //Free the page table entries starting from this virtual address (va) Also mark the pages free in the bitmap
@@ -236,6 +315,84 @@ void a_free(void *va, uint64_t size) {
 	} // end of free process
 }
 
+void ufree(void *va, uint64_t size) {
+    //Free the page table entries starting from this virtual address (va) Also mark the pages free in the bitmap
+    //Only free if the memory from "va" to va+size is valid
+	if(size==0 || size>MAX_MEMSIZE)	return;
+
+	uint64_t num_pages = size>>_offsetbits;
+	if(size & ~((~0)<<_offsetbits))	++num_pages;
+
+	pageno_t vpn = ((address_t)va)>>_offsetbits;
+	bool free_flag = true;
+	hold_wlock(&_pagetable_lock);
+	for(pageno_t i=vpn;i<vpn+num_pages;++i)
+		if(get_bitmap(vbitmap, i)==0) {
+			free_flag = false;
+			break;
+		}
+	
+	if(free_flag) {
+		uint32_t pgdindex, pudindex, pmdindex, pteindex;
+		pageno_t pfn, ppn;
+		for(pageno_t ivpn=vpn;ivpn<vpn+num_pages;++ivpn) {
+			pgdindex = ivpn>>(3*LEVELBITS);
+			pudindex = (ivpn>>(2*LEVELBITS)) & ~((~0)<<LEVELBITS);
+			pmdindex = (ivpn>>LEVELBITS) & ~((~0)<<LEVELBITS);
+			pteindex = ivpn & ~((~0)<<LEVELBITS);
+
+			pud_t *pudtable = _pgd[pgdindex];
+			pmd_t *pmdtable = pudtable[pudindex];
+			pte_t *ptetable = pmdtable[pmdindex];
+			pfn = ptetable[pteindex];
+			
+			tlb_freeupdate(vpn);
+			ptetable[pteindex] = 0;
+			// free the ptetable if necessary
+			bool freetable_flag = true;
+			for(uint32_t i=0;i<_tablesize;++i)
+				if(ptetable[i]!=0) {
+					freetable_flag = false;
+					break;
+				}
+
+			if(freetable_flag) {
+				free(pmdtable[pmdindex]);
+				pmdtable[pmdindex] = 0;
+
+				// free the pmdtable if necessary
+				for(uint32_t i=0;i<_tablesize;++i)
+					if(pmdtable[i]!=0) {
+						freetable_flag = false;
+						break;
+					}
+
+				if(freetable_flag) {
+					free(pudtable[pudindex]);
+					pudtable[pudindex] = 0;
+
+					// free the pudtable if necessary
+					for(uint32_t i=0;i<_tablesize;++i)
+						if(pudtable[i]!=0) {
+							freetable_flag = false;
+							break;
+						}
+
+					if(freetable_flag) {
+						free(_pgd[pgdindex]);
+						_pgd[pgdindex] = 0;
+					}
+				}
+			}
+
+			ppn = transfer_pfntoppn(pfn);
+			clear_bitmap(pbitmap, ppn);
+			clear_bitmap(vbitmap, ivpn);
+		}
+	} // end of free process
+	release_lock(&_pagetable_lock);
+}
+
 /* The function copies data pointed by "val" to physical
  * memory pages using virtual address (va)
 */
@@ -279,6 +436,64 @@ void put_value(void *va, void *val, int size) {
 	}
 }
 
+void put_val(void *va, void *val, int size) {
+    /* HINT: Using the virtual address and translate(), find the physical page. Copy
+       the contents of "val" to a physical page. NOTE: The "size" value can be larger
+       than one page. Therefore, you may have to find multiple pages using translate()
+       function.*/
+	if(size<=0 || val==NULL)	return;
+	pageno_t vpn_start = (address_t)va >> _offsetbits;
+	pageno_t vpn_end = ((address_t)va + size-1) >> _offsetbits;
+	address_t pa;
+
+	hold_rlock(&_pagetable_lock);
+	// check the validation first!
+	for(pageno_t vpn=vpn_start;vpn<=vpn_end;++vpn)	
+		if(get_bitmap(vbitmap, vpn)==0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+
+	if(vpn_start == vpn_end) {
+		pa = p_translate((address_t)va);
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy((void*)pa, val, size);
+	}else {
+		uint64_t remain = ((vpn_start+1)<<_offsetbits) - (address_t)va;
+		pa = p_translate((address_t)va);
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy((void*)pa, val, remain);
+		val = (void*)((address_t)val + remain);
+		size -= remain;
+		address_t va_tmp;
+		for(pageno_t vpn_mid=vpn_start+1;vpn_mid<vpn_end;++vpn_mid) {
+			va_tmp = vpn_mid << _offsetbits;
+			pa = p_translate(va_tmp);
+			if(pa == 0)	{
+				release_lock(&_pagetable_lock);
+				return;
+			}
+			memcpy((void*)pa, val, PGSIZE);
+			size -= PGSIZE;
+			val = (void*)((address_t)val + PGSIZE);
+		}
+
+		pa = p_translate((address_t)(vpn_end<<_offsetbits));
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy((void*)pa, val, size);
+	}
+	release_lock(&_pagetable_lock);
+}
+
 /*Given a virtual address, this function copies the contents of the page to val*/
 void get_value(void *va, void *val, int size) {
     /* HINT: put the values pointed to by "va" inside the physical memory at given
@@ -315,6 +530,55 @@ void get_value(void *va, void *val, int size) {
 	}
 }
 
+void get_val(void *va, void *val, int size) {
+    /* HINT: put the values pointed to by "va" inside the physical memory at given
+    "val" address. Assume you can access "val" directly by derefencing them.
+    If you are implementing TLB,  always check first the presence of translation in TLB before proceeding forward */
+	if(size<=0 || val==NULL)	return;
+	pageno_t vpn_start = (address_t)va >> _offsetbits;
+	pageno_t vpn_end = ((address_t)va+size-1) >> _offsetbits;
+	address_t pa;
+	hold_rlock(&_pagetable_lock);
+	if(vpn_start == vpn_end) {
+		pa = p_translate((address_t)va);
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy(val, (void*)pa, size);
+	}else {
+		uint32_t remain = ((vpn_start+1)<<_offsetbits) - (address_t)va;
+		pa = p_translate((address_t)va);
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy(val, (void*)pa, remain);
+		val = (void*)((address_t)val + remain);
+		size -= remain;
+		address_t va_tmp;
+		for(pageno_t vpn_mid=vpn_start+1;vpn_mid<vpn_end;++vpn_mid) {
+			va_tmp = vpn_mid << _offsetbits;
+			pa = translate(va_tmp);
+			if(pa == 0)	{
+				release_lock(&_pagetable_lock);
+				return;
+			}
+			memcpy(val, (void*)pa, PGSIZE);
+			size -= PGSIZE;
+			val = (void*)((address_t)val + PGSIZE);
+		}
+
+		pa = translate((address_t)(vpn_end<<_offsetbits));
+		if(pa == 0)	{
+			release_lock(&_pagetable_lock);
+			return;
+		}
+		memcpy(val, (void*)pa, size);
+	}
+	release_lock(&_pagetable_lock);
+}
+
 /*
 This function receives two matrices mat1 and mat2 as an argument with size
 argument representing the number of rows and columns. After performing matrix multiplication, copy the result to answer.
@@ -338,6 +602,25 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer) {
 			}
 			address_ans = (address_t)answer + (i*size+j)*sizeof(int);
 			put_value((void*)address_ans, &tmp, sizeof(int));
+		}
+	
+}
+
+void p_mat_mult(void *mat1, void *mat2, int size, void *answer) {
+	address_t address_m1, address_m2, address_ans;
+	int tmp, tmp1, tmp2;
+	for(uint64_t i=0;i<size;++i)
+		for(uint64_t j=0;j<size;++j) {
+			tmp = 0;
+			for(uint64_t k=0;k<size;++k) {
+				address_m1 = (address_t)mat1 + (i*size+k)*sizeof(int);
+				address_m2 = (address_t)mat2 + (k*size+j)*sizeof(int);
+				get_val((void*)address_m1, &tmp1, sizeof(int));
+				get_val((void*)address_m2, &tmp2, sizeof(int));
+				tmp += tmp1*tmp2;
+			}
+			address_ans = (address_t)answer + (i*size+j)*sizeof(int);
+			put_val((void*)address_ans, &tmp, sizeof(int));
 		}
 	
 }
@@ -408,6 +691,27 @@ void tlb_add(pageno_t vpn, pageno_t pfn) {
 
 void tlb_freeupdate(pageno_t vpn) {
 	uint32_t target = vpn & _tlbmodbits;
-	if(_tlb_store[target].valid==true && _tlb_store[target].key==vpn)	_tlb_store[target].valid = false;
+	if(_tlb_store[target].key==vpn && _tlb_store[target].valid==true)	_tlb_store[target].valid = false;
+}
+
+void release_lock(pthread_rwlock_t *lock) {
+	if(0 != pthread_rwlock_unlock(lock)) {
+		fprintf(stderr, "pthread_rwlock_unlock(lock) fails!\n");
+		exit(1);
+	}
+}
+
+void hold_rlock(pthread_rwlock_t *lock) {
+	if(0 != pthread_rwlock_rdlock(lock)) {
+		fprintf(stderr, "pthread_rwlock_rdlock(lock) fails!\n");
+		exit(1);
+	}
+}
+
+void hold_wlock(pthread_rwlock_t *lock) {
+	if(0 != pthread_rwlock_wrlock(lock)) {
+		fprintf(stderr, "pthread_rwlock_wrlock(lock) fails!\n");
+		exit(1);
+	}
 }
 

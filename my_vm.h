@@ -17,10 +17,11 @@
 
 // Maximum size of your memory
 //#define MAX_MEMSIZE (uint64_t)1024*(uint64_t)1024*(uint64_t)1024
-//1024*1024*1024=1073741824    1024*1024*1024*1024=1099511627776  128G=137438953472
+//1024*1024*1024=1073741824    1024*1024*1024*1024=1099511627776  128G=137438953472  32G=34359738368
 //#define MAX_MEMSIZE 8589934592
 //#define MAX_MEMSIZE 137438953472
 #define MAX_MEMSIZE 1073741824
+//#define MAX_MEMSIZE 34359738368
 
 #define LEVELBITS 9
 
@@ -78,6 +79,9 @@ pageno_t get_next_avail_pfn();
 pageno_t transfer_ppntopfn(pageno_t ppn);
 pageno_t transfer_pfntoppn(pageno_t pfn);
 
+pthread_rwlock_t _pagetable_lock;
+pthread_rwlock_t _tlb_lock[TLBSIZE];
+
 void set_physical_mem();
 address_t translate(address_t va);
 void* get_next_avail(uint64_t num_pages);
@@ -91,5 +95,15 @@ void mat_mult(void *mat1, void *mat2, int size, void *answer);
 void tlb_add(pageno_t vpn, pageno_t pfn);
 uint64_t tlb_lookup(pageno_t vpn);
 void tlb_freeupdate(pageno_t vpn);
+
+void *umalloc(uint64_t num_bytes);
+void ufree(void *va, uint64_t size);
+void put_val(void *va, void *val, int size);
+void get_val(void *va, void *val, int size);
+void p_mat_mult(void *mat1, void *mat2, int size, void *answer);
+void hold_rlock(pthread_rwlock_t *lock);
+void hold_wlock(pthread_rwlock_t *lock);
+void release_lock(pthread_rwlock_t *lock);
+address_t p_translate(address_t va);
 
 #endif

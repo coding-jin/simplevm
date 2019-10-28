@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -g -c -std=c11 -m64
+CFLAGS = -g -c -std=gnu99 -m64 -pthread
 AR = ar -rc
 RANLIB = ranlib
 

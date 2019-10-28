@@ -1,12 +1,14 @@
 #include "../my_vm.h"
 #include <time.h>
-#define num_threads 15
+#define num_threads 50
 
 void *pointers[num_threads];
 int ids[num_threads];
 pthread_t threads[num_threads];
 int alloc_size = 5000;
 int matrix_size = 5;
+
+pthread_rwlock_t lock;
 
 void *alloc_mem(void *id_arg) {
     int id = *((int *)id_arg);
@@ -19,7 +21,7 @@ void *put_mem(void *id_arg) {
     void *va_pointer = pointers[*((int *)id_arg)];
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (uint64_t)va_pointer + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            uint64_t address_a = (uint64_t)va_pointer + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             put_val((void *)address_a, &val, sizeof(int));
         }
     } 
@@ -31,7 +33,7 @@ void *mat_mem(void *id_arg) {
     void *a = pointers[i];
     void *b = pointers[i + 1];
     void *c = pointers[i + 2];
-    mat_mult(a, b, 5, c);
+    p_mat_mult(a, b, 5, c);
     return NULL;
 }
 
@@ -45,25 +47,32 @@ int main() {
     for (int i = 0; i < num_threads; i++)
         ids[i] = i;
     for (int i = 0; i < num_threads; i++)
-        pthread_create(&threads[i], NULL, alloc_mem, (void *)&ids[i]);
-    for (int i = num_threads; i >= 0; i--)
+        if(pthread_create(&threads[i], NULL, alloc_mem, (void *)&ids[i])) {
+			fprintf(stderr, "pthread_create( error!\n");
+		}
+	
+    for (int i = 0; i < num_threads; i++)
         pthread_join(threads[i], NULL);
+
     printf("Allocated Pointers: \n");
     for (int i = 0; i < num_threads; i++)
-        printf("%x ", (int)pointers[i]);
+        printf("%x ", (uint64_t)pointers[i]);
     printf("\n");
     printf("initializing some of the memory by in multiple threads\n");
+
     for (int i = 0; i < num_threads; i++)
         pthread_create(&threads[i], NULL, put_mem, (void *)&ids[i]);
-    for (int i = num_threads; i >= 0; i--)
+	
+    for (int i = num_threads-1; i >= 0; i--)
         pthread_join(threads[i], NULL);
+	
     printf("Randomly checking a thread allocation to see if everything worked correctly!\n");
     int rand_id = rand() % num_threads;
     void *a = pointers[rand_id];
     int val = 0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            uint64_t address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             get_val((void *)address_a, &val, sizeof(int));
             printf("%d ", val);
         }
@@ -80,7 +89,7 @@ int main() {
     val = 0;
     for (int i = 0; i < 5; i++) {
         for (int j = 0; j < 5; j++) {
-            int address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
+            uint64_t address_a = (uint64_t)a + ((i * 5 * sizeof(int))) + (j * sizeof(int));
             get_val((void *)address_a, &val, sizeof(int));
             printf("%d ", val);
         }
@@ -88,10 +97,10 @@ int main() {
     }
     uint64_t old = (uint64_t)pointers[0];
     printf("Gonna free everything in multiple threads!\n");
-    // ufree(pointers[0], alloc_size);
+     ufree(pointers[0], alloc_size);
     for (int i = 0; i < num_threads; i++)
         pthread_create(&threads[i], NULL, free_mem, (void *)&ids[i]);
-    for (int i = num_threads; i >= 0; i--)
+    for (int i = num_threads-1; i >= 0; i--)
         pthread_join(threads[i], NULL);
     void *temp = (void *)1;
     int flag = 0;
@@ -106,4 +115,5 @@ int main() {
     if (!flag) {
         printf("Some Problem with free!\n");
     }
+
 }
