@@ -17,12 +17,12 @@
 
 // Maximum size of your memory
 //#define MAX_MEMSIZE (uint64_t)1024*(uint64_t)1024*(uint64_t)1024
-//1024*1024*1024=1073741824    1024*1024*1024*1024=1099511627776
-#define MAX_MEMSIZE 8589934592
+//1024*1024*1024=1073741824    1024*1024*1024*1024=1099511627776  128G=137438953472
+//#define MAX_MEMSIZE 8589934592
+//#define MAX_MEMSIZE 137438953472
+#define MAX_MEMSIZE 1073741824
 
 #define LEVELBITS 9
-
-pthread_mutex_t _lock;
 
 typedef uint64_t address_t;
 
@@ -43,7 +43,6 @@ typedef uint64_t pte_t;
 
 typedef uint64_t pageno_t;
 
-//#define TLB_SIZE 
 
 //Structure to represents TLB
 typedef struct tlb{
@@ -52,10 +51,8 @@ typedef struct tlb{
 	bool valid;
 	pageno_t key;
 	pageno_t value;
-	uint64_t timecounter;
 }tlb;
 tlb _tlb_store[TLBSIZE];
-uint64_t _timecounter;
 
 char *memstart;
 //pde_t *_pagedir;
@@ -64,6 +61,7 @@ uint32_t *vbitmap;
 uint64_t _pagenum;
 uint32_t _offsetbits;
 uint32_t _tablesize;
+uint32_t _tlbmodbits;
 
 void set_bitmap(uint32_t *bitmap, uint64_t k);
 void clear_bitmap(uint32_t *bitmap, uint64_t k);
@@ -84,13 +82,13 @@ void set_physical_mem();
 address_t translate(address_t va);
 void* get_next_avail(uint64_t num_pages);
 bool page_map(pageno_t vpn, pageno_t pfn);
-void tlb_add(pageno_t vpn, pageno_t pfn);
 void *a_malloc(uint64_t num_bytes);
 void a_free(void *va, uint64_t size);
 void put_value(void *va, void *val, int size);
 void get_value(void *va, void *val, int size);
 void mat_mult(void *mat1, void *mat2, int size, void *answer);
 
+void tlb_add(pageno_t vpn, pageno_t pfn);
 uint64_t tlb_lookup(pageno_t vpn);
 void tlb_freeupdate(pageno_t vpn);
 

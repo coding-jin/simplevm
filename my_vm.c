@@ -13,6 +13,7 @@ void set_physical_mem() {
 	_offsetbits = get_pow2(PGSIZE);
 	_pagenum = MAX_MEMSIZE/PGSIZE;
 	_tablesize = 1<<LEVELBITS;
+	_tlbmodbits = ~((~0)<<get_pow2(TLBSIZE));
 	uint64_t bitmapsize = _pagenum/8;  // the size of bitmap, in terms of byte
     //HINT: Also calculate the number of physical and virtual pages and allocate virtual and physical bitmaps and initialize them
 	pbitmap = (uint32_t*)calloc(bitmapsize, 1);
@@ -32,11 +33,6 @@ void set_physical_mem() {
 	}
 
 	for(int i=0;i<TLBSIZE;++i)	_tlb_store[i].valid = false;
-	_timecounter = 0;
-	if(pthread_mutex_init(&_lock, NULL) != 0) {
-		fprintf(stderr, "pthread_mutex_init fails!\n");
-		exit(1);
-	}
 	_init_physical = true;
 }
 
@@ -153,7 +149,6 @@ void *get_next_avail(uint64_t num_pages) {
 /* Function responsible for allocating pages and used by the benchmark */
 void *a_malloc(uint64_t num_bytes) {
     //HINT: If the physical memory is not yet initialized, then allocate and initialize.
-	pthread_mutex_lock(&_lock);
 	if(_init_physical == false)	set_physical_mem();
 	/* HINT: If the page directory is not initialized, then initialize the page directory. Next, using get_next_avail(), check if there are free pages. If
 	free pages are available, set the bitmaps and map a new page. Note, you will have to mark which physical pages are used. */
@@ -161,7 +156,6 @@ void *a_malloc(uint64_t num_bytes) {
 	uint64_t num_pages = num_bytes>>_offsetbits;
 	if(num_bytes&~((~0)<<_offsetbits))	++num_pages;
 	void *malloc_address = get_next_avail(num_pages);
-	pthread_mutex_unlock(&_lock);
 	return malloc_address;
 }
 
@@ -176,7 +170,6 @@ void a_free(void *va, uint64_t size) {
 
 	pageno_t vpn = ((address_t)va)>>_offsetbits;
 	bool free_flag = true;
-	pthread_mutex_lock(&_lock);
 	for(pageno_t i=vpn;i<vpn+num_pages;++i)
 		if(get_bitmap(vbitmap, i)==0) {
 			free_flag = false;
@@ -241,7 +234,6 @@ void a_free(void *va, uint64_t size) {
 			clear_bitmap(vbitmap, ivpn);
 		}
 	} // end of free process
-	pthread_mutex_unlock(&_lock);
 }
 
 /* The function copies data pointed by "val" to physical
@@ -257,7 +249,6 @@ void put_value(void *va, void *val, int size) {
 	pageno_t vpn_end = ((address_t)va + size-1) >> _offsetbits;
 	address_t pa;
 
-	pthread_mutex_lock(&_lock);
 	// check the validation first!
 	for(pageno_t vpn=vpn_start;vpn<=vpn_end;++vpn)	if(get_bitmap(vbitmap, vpn)==0)	return;
 
@@ -286,7 +277,6 @@ void put_value(void *va, void *val, int size) {
 		if(pa == 0)	return;
 		memcpy((void*)pa, val, size);
 	}
-	pthread_mutex_unlock(&_lock);
 }
 
 /*Given a virtual address, this function copies the contents of the page to val*/
@@ -298,7 +288,6 @@ void get_value(void *va, void *val, int size) {
 	pageno_t vpn_start = (address_t)va >> _offsetbits;
 	pageno_t vpn_end = ((address_t)va+size-1) >> _offsetbits;
 	address_t pa;
-	pthread_mutex_lock(&_lock);
 	if(vpn_start == vpn_end) {
 		pa = translate((address_t)va);
 		if(pa == 0)	return;
@@ -324,7 +313,6 @@ void get_value(void *va, void *val, int size) {
 		if(pa == 0)	return;
 		memcpy(val, (void*)pa, size);
 	}
-	pthread_mutex_unlock(&_lock);
 }
 
 /*
@@ -406,45 +394,20 @@ pageno_t transfer_pfntoppn(pageno_t pfn) {
 }
 
 uint64_t tlb_lookup(pageno_t vpn) {
-	for(int i=0;i<TLBSIZE;++i)
-		if(_tlb_store[i].valid)
-			if(_tlb_store[i].key == vpn) {
-				_tlb_store[i].timecounter = _timecounter++;
-				return _tlb_store[i].value;
-			}
-
+	uint32_t target = vpn & _tlbmodbits;
+	if(_tlb_store[target].key==vpn && _tlb_store[target].valid==true)	return _tlb_store[target].value;
 	return 0;
 }
 
 void tlb_add(pageno_t vpn, pageno_t pfn) {
-	int target = -1;
-	for(int i=0;i<TLBSIZE;++i) {
-		if(_tlb_store[i].valid == false) {
-			target = i;
-			break;
-		}
-	}
-
-	if(target == -1) {
-		int min_index = 0;
-		for(int i=1;i<TLBSIZE;++i)
-			if(_tlb_store[i].timecounter < _tlb_store[min_index].timecounter)	min_index = i;
-
-		target = min_index;
-	}
-	
+	uint32_t target = vpn & _tlbmodbits;
 	_tlb_store[target].key = vpn;
 	_tlb_store[target].value = pfn;
-	_tlb_store[target].timecounter = _timecounter++;
-
+	_tlb_store[target].valid = true;
 }
 
 void tlb_freeupdate(pageno_t vpn) {
-	for(int i=0;i<TLBSIZE;++i) {
-		if(_tlb_store[i].valid && _tlb_store[i].key==vpn) {
-			_tlb_store[i].valid=false;
-			break;
-		}
-	}
+	uint32_t target = vpn & _tlbmodbits;
+	if(_tlb_store[target].valid==true && _tlb_store[target].key==vpn)	_tlb_store[target].valid = false;
 }
 
